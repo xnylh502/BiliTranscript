@@ -1,0 +1,57 @@
+# ===== 模型文件（体积大，不入库；用「下载/导入」或 scripts 拉取）=====
+# 内置 SenseVoice 模型（229MB，超 GitHub 100MB 限制）
+android-app/app/src/main/assets/models/*.onnx
+android-app/app/src/main/assets/models/*.weights
+# 本地下载/导入的模型目录、打好的模型压缩包
+model-packages/
+*.onnx
+*.weights
+*.pt
+*.bin
+
+# Python 端大文件
+models/
+ffmpeg.exe
+output/
+
+# ===== 密钥 / 本地配置 =====
+baidu_key.txt
+*.local
+.env
+android-app/local.properties
+
+# ===== Android 构建产物 =====
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.keystore
+*.jks
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# ===== IDE / 系统 =====
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ===== 日志 / 临时 =====
+*.log
+crash_log.txt
+
+# ===== 工具缓存 =====
+.playwright-mcp/
+node_modules/

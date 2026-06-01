@@ -1,0 +1,17 @@
+# 统一文本行尾为 LF；Windows 脚本保留 CRLF
+* text=auto eol=lf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# 二进制文件不做行尾转换 / diff
+*.aar   binary
+*.onnx  binary
+*.weights binary
+*.pt    binary
+*.bin   binary
+*.exe   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.zip   binary

@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B站文案提取器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 20px;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .bg-glow {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.15;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .bg-glow-1 {
+            width: 400px; height: 400px;
+            background: #FB7299;
+            top: -100px; right: -100px;
+            animation: float 8s ease-in-out infinite;
+        }
+        .bg-glow-2 {
+            width: 300px; height: 300px;
+            background: #00AEEC;
+            bottom: -50px; left: -50px;
+            animation: float 10s ease-in-out infinite reverse;
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -30px) scale(1.1); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 720px;
+            margin-top: 20px;
+        }
+
+        .main-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px 32px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .main-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+        }
+
+        .brand {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+        .brand-icon {
+            width: 64px; height: 64px;
+            background: linear-gradient(135deg, #FB7299 0%, #ff85a7 100%);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 28px;
+            box-shadow: 0 8px 32px rgba(251, 114, 153, 0.3);
+        }
+        .brand h1 {
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, #a0a0c0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 6px;
+        }
+        .brand p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+        }
+
+        /* 引擎状态标签 */
+        .engine-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+        .engine-status.local {
+            background: rgba(255, 193, 7, 0.15);
+            border-color: rgba(255, 193, 7, 0.3);
+            color: #ffc107;
+        }
+        .engine-status.cloud {
+            background: rgba(0, 230, 118, 0.15);
+            border-color: rgba(0, 230, 118, 0.3);
+            color: #00e676;
+        }
+        .engine-status:hover {
+            opacity: 0.8;
+        }
+
+        .input-section { margin-bottom: 20px; }
+        .input-wrapper { position: relative; }
+        .input-wrapper label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+        }
+        .input-box {
+            width: 100%;
+            padding: 14px 18px 14px 44px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 14px;
+            color: #fff;
+            font-size: 15px;
+            line-height: 1.5;
+            transition: all 0.3s ease;
+            resize: vertical;
+            min-height: 56px;
+            font-family: inherit;
+        }
+        .input-box::placeholder { color: rgba(255, 255, 255, 0.3); }
+        .input-box:focus {
+            outline: none;
+            border-color: rgba(251, 114, 153, 0.5);
+            box-shadow: 0 0 0 3px rgba(251, 114, 153, 0.1);
+            background: rgba(0, 0, 0, 0.4);
+        }
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 42px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 18px;
+        }
+
+        .extract-btn {
+            width: 100%;
+            padding: 15px 24px;
+            background: linear-gradient(135deg, #FB7299 0%, #ff85a7 100%);
+            border: none;
+            border-radius: 14px;
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 32px rgba(251, 114, 153, 0.3);
+        }
+        .extract-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(251, 114, 153, 0.4);
+        }
+        .extract-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-loading {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        .btn-loading.active { display: flex; }
+        .btn-text.active { display: none; }
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .progress-section, .result-section {
+            margin-top: 24px;
+            display: none;
+        }
+        .progress-section.active, .result-section.active {
+            display: block;
+            animation: fadeInUp 0.5s ease;
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .progress-card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 28px;
+            text-align: center;
+        }
+        .progress-spinner {
+            width: 44px; height: 44px;
+            border: 3px solid rgba(251, 114, 153, 0.2);
+            border-top-color: #FB7299;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        .progress-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .progress-desc { font-size: 13px; color: rgba(255, 255, 255, 0.5); }
+
+        .result-card {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 14px;
+        }
+        .result-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            gap: 14px;
+        }
+        .result-title { font-size: 17px; font-weight: 600; line-height: 1.4; flex: 1; }
+        .result-meta { display: flex; gap: 10px; flex-shrink: 0; }
+        .meta-tag {
+            padding: 4px 12px;
+            background: rgba(251, 114, 153, 0.15);
+            border: 1px solid rgba(251, 114, 153, 0.3);
+            border-radius: 20px;
+            font-size: 12px;
+            color: #FB7299;
+            white-space: nowrap;
+        }
+        .transcript-box {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 18px;
+            max-height: 360px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.8;
+            color: rgba(255, 255, 255, 0.85);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .transcript-box::-webkit-scrollbar { width: 6px; }
+        .transcript-box::-webkit-scrollbar-track { background: transparent; }
+        .transcript-box::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 3px; }
+
+        .action-buttons { display: flex; gap: 12px; margin-top: 14px; }
+        .action-btn {
+            flex: 1;
+            padding: 11px 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .action-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); }
+        .action-btn.primary {
+            background: linear-gradient(135deg, #FB7299 0%, #ff85a7 100%);
+            border-color: transparent;
+            color: #fff;
+        }
+
+        .error-card {
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid rgba(220, 38, 38, 0.3);
+            border-radius: 16px;
+            padding: 18px 22px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: #fca5a5;
+            font-size: 14px;
+        }
+
+        .tip-card {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 14px;
+            padding: 14px 18px;
+            margin-top: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .tip-text { font-size: 13px; color: rgba(255, 255, 255, 0.55); line-height: 1.6; }
+        .tip-text strong { color: rgba(255, 255, 255, 0.85); }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.25);
+        }
+
+        /* ===== 模态框：配置引擎 ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.active { display: flex; }
+
+        .modal-card {
+            background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 24px;
+            padding: 32px;
+            width: 100%;
+            max-width: 560px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.8);
+        }
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .modal-close {
+            background: rgba(255, 255, 255, 0.08);
+            border: none;
+            border-radius: 10px;
+            width: 36px; height: 36px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .modal-close:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+
+        /* 教程步骤 */
+        .tutorial-step {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 16px;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .step-num {
+            width: 28px; height: 28px;
+            background: linear-gradient(135deg, #FB7299, #ff85a7);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .step-content { flex: 1; }
+        .step-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .step-desc { font-size: 13px; color: rgba(255, 255, 255, 0.55); line-height: 1.6; }
+        .step-desc a {
+            color: #FB7299;
+            text-decoration: none;
+        }
+        .step-desc a:hover { text-decoration: underline; }
+
+        /* 输入框 */
+        .config-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 14px;
+            margin-top: 6px;
+            transition: all 0.3s;
+        }
+        .config-input:focus {
+            outline: none;
+            border-color: rgba(251, 114, 153, 0.5);
+            box-shadow: 0 0 0 3px rgba(251, 114, 153, 0.1);
+        }
+        .config-input::placeholder { color: rgba(255, 255, 255, 0.3); }
+        .config-label {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            font-weight: 500;
+            margin-top: 14px;
+            display: block;
+        }
+
+        .config-btns {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        .config-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: none;
+        }
+        .config-btn.save {
+            background: linear-gradient(135deg, #FB7299, #ff85a7);
+            color: #fff;
+        }
+        .config-btn.save:hover { box-shadow: 0 4px 20px rgba(251, 114, 153, 0.3); }
+        .config-btn.clear {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .config-btn.clear:hover { background: rgba(255, 255, 255, 0.12); }
+
+        .engine-compare {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .compare-item {
+            padding: 14px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            text-align: center;
+        }
+        .compare-item.active {
+            border: 1px solid rgba(251, 114, 153, 0.3);
+            background: rgba(251, 114, 153, 0.08);
+        }
+        .compare-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+        .compare-item.active .compare-name { color: #FB7299; }
+        .compare-desc { font-size: 12px; color: rgba(255, 255, 255, 0.5); }
+
+        @media (max-width: 600px) {
+            .main-card { padding: 28px 20px; }
+            .brand h1 { font-size: 22px; }
+            .result-header { flex-direction: column; }
+            .action-buttons { flex-direction: column; }
+            .engine-compare { grid-template-columns: 1fr; }
+            .modal-card { padding: 24px 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+
+    <div class="container">
+        <div class="main-card">
+            <div class="brand">
+                <div class="brand-icon">🎙️</div>
+                <h1>B站视频文案提取器</h1>
+                <p>粘贴视频链接，AI自动识别语音转文字</p>
+                <div class="engine-status local" id="engineStatus" onclick="openConfigModal()">
+                    <span id="engineStatusDot">🟡</span>
+                    <span id="engineStatusText">本地Whisper · 点击切换引擎</span>
+                </div>
+            </div>
+
+            <div class="input-section">
+                <div class="input-wrapper">
+                    <label for="urlInput">B站视频链接</label>
+                    <span class="input-icon">🔗</span>
+                    <textarea id="urlInput" class="input-box"
+                        placeholder="粘贴B站分享链接，例如：&#10;【KARDS全隐藏勋章获得教程】 https://www.bilibili.com/video/BV1n3KXz7ERs/?share_source=copy_web"
+                        rows="3"></textarea>
+                </div>
+            </div>
+
+            <button class="extract-btn" id="extractBtn" onclick="extract()">
+                <span class="btn-text">✨ 一键提取文案</span>
+                <span class="btn-loading" id="btnLoading">
+                    <span class="spinner"></span>
+                    <span>正在处理...</span>
+                </span>
+            </button>
+
+            <div class="tip-card">
+                <span style="font-size:18px;flex-shrink:0;">💡</span>
+                <div class="tip-text">
+                    <strong>使用提示：</strong>直接粘贴B站App的分享文本即可。当前使用<strong id="tipEngineName">本地Whisper</strong>识别。配置百度API后可获得<strong>更快、更准</strong>的识别效果。
+                </div>
+            </div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-card">
+                    <div class="progress-spinner"></div>
+                    <div class="progress-title" id="progressTitle">正在准备...</div>
+                    <div class="progress-desc" id="progressDesc">请稍候</div>
+                </div>
+            </div>
+
+            <div class="result-section" id="resultSection"></div>
+        </div>
+
+        <div class="footer">B站文案提取器 · 基于 OpenAI Whisper / 百度语音API</div>
+    </div>
+
+    <!-- ===== 配置模态框 ===== -->
+    <div class="modal-overlay" id="configModal" onclick="closeConfigModal(event)">
+        <div class="modal-card" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title">⚙️ 配置识别引擎</div>
+                <button class="modal-close" onclick="closeConfigModal()">✕</button>
+            </div>
+
+            <!-- 引擎对比 -->
+            <div class="engine-compare">
+                <div class="compare-item" id="compareLocal">
+                    <div class="compare-name">🖥️ 本地Whisper</div>
+                    <div class="compare-desc">已内置模型，开箱即用<br>准确率 85-90%</div>
+                </div>
+                <div class="compare-item" id="compareCloud">
+                    <div class="compare-name">☁️ 百度语音API</div>
+                    <div class="compare-desc">云端识别，速度更快<br>准确率 95%+</div>
+                </div>
+            </div>
+
+            <!-- 教程 -->
+            <div id="tutorialSection">
+                <div style="font-size:15px;font-weight:600;margin:20px 0 14px;">📖 如何申请百度API（5分钟搞定）</div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-title">打开百度AI官网</div>
+                        <div class="step-desc">
+                            点击链接进入 → <a href="https://ai.baidu.com/tech/speech/asr" target="_blank">https://ai.baidu.com/tech/speech/asr</a><br>
+                            登录你的百度账号（没有就注册一个）
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-title">点击"立即使用"</div>
+                        <div class="step-desc">
+                            页面右上角点击<strong>"立即使用"</strong>按钮，进入语音技术控制台
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-title">实名认证</div>
+                        <div class="step-desc">
+                            点击提示里的<strong>"去认证"</strong>，选择<strong>"个人认证"</strong>，上传身份证正反面照片，几分钟就通过了
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-title">领取免费额度</div>
+                        <div class="step-desc">
+                            认证通过后，在控制台页面点击<strong>"领取免费资源"</strong>，勾选全部语音识别接口，点击领取<br>
+                            <span style="color:#ffc107;">🎁 个人用户可领：5万次调用 + 10小时音频转写（180天有效）</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <div class="step-title">创建应用，获取密钥</div>
+                        <div class="step-desc">
+                            点击左侧<strong>"应用列表"</strong> → <strong>"创建应用"</strong><br>
+                            应用名称随便填（如"B站文案提取"），其他默认就行<br>
+                            创建完成后，复制三个密钥：<strong>AppID</strong>、<strong>API Key</strong>、<strong>Secret Key</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-step">
+                    <div class="step-num">6</div>
+                    <div class="step-content">
+                        <div class="step-title">填入下方，保存即可</div>
+                        <div class="step-desc">
+                            把刚才复制的三个密钥分别填入下面的三个框，点击"保存配置"就搞定了！
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 密钥输入 -->
+            <label class="config-label">AppID</label>
+            <input type="text" class="config-input" id="cfgAppId" placeholder="例如：12345678">
+
+            <label class="config-label">API Key</label>
+            <input type="text" class="config-input" id="cfgApiKey" placeholder="例如：AbCdEfGhIjKlMnOp">
+
+            <label class="config-label">Secret Key</label>
+            <input type="text" class="config-input" id="cfgSecretKey" placeholder="例如：QrStUvWxYz1234567890AbCdEfGhIjKl">
+
+            <div class="config-btns">
+                <button class="config-btn save" onclick="saveConfig()">💾 保存配置</button>
+                <button class="config-btn clear" onclick="clearConfig()">🗑️ 清除配置（用本地Whisper）</button>
+            </div>
+
+            <div id="configMessage" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px;"></div>
+        </div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const extractBtn = document.getElementById('extractBtn');
+        const btnLoading = document.getElementById('btnLoading');
+        const btnText = document.querySelector('.btn-text');
+        const progressSection = document.getElementById('progressSection');
+        const progressTitle = document.getElementById('progressTitle');
+        const progressDesc = document.getElementById('progressDesc');
+        const resultSection = document.getElementById('resultSection');
+        const engineStatus = document.getElementById('engineStatus');
+        const engineStatusDot = document.getElementById('engineStatusDot');
+        const engineStatusText = document.getElementById('engineStatusText');
+        const tipEngineName = document.getElementById('tipEngineName');
+        const configModal = document.getElementById('configModal');
+        const configMessage = document.getElementById('configMessage');
+
+        let currentResult = null;
+        let baiduConfigured = false;
+
+        // 页面加载时获取当前引擎状态
+        async function checkEngineStatus() {
+            try {
+                const resp = await fetch('/api/config');
+                const data = await resp.json();
+                baiduConfigured = data.baidu_configured;
+                updateEngineUI();
+            } catch (e) {
+                console.log('获取引擎状态失败:', e);
+            }
+        }
+
+        function updateEngineUI() {
+            if (baiduConfigured) {
+                engineStatus.className = 'engine-status cloud';
+                engineStatusDot.textContent = '🟢';
+                engineStatusText.textContent = '百度API · 点击切换';
+                tipEngineName.textContent = '百度语音API';
+                document.getElementById('compareCloud').classList.add('active');
+                document.getElementById('compareLocal').classList.remove('active');
+            } else {
+                engineStatus.className = 'engine-status local';
+                engineStatusDot.textContent = '🟡';
+                engineStatusText.textContent = '本地Whisper · 点击切换';
+                tipEngineName.textContent = '本地Whisper';
+                document.getElementById('compareLocal').classList.add('active');
+                document.getElementById('compareCloud').classList.remove('active');
+            }
+        }
+
+        function openConfigModal() {
+            configModal.classList.add('active');
+            configMessage.textContent = '';
+        }
+
+        function closeConfigModal(e) {
+            if (!e || e.target === configModal) {
+                configModal.classList.remove('active');
+            }
+        }
+
+        async function saveConfig() {
+            const appId = document.getElementById('cfgAppId').value.trim();
+            const apiKey = document.getElementById('cfgApiKey').value.trim();
+            const secretKey = document.getElementById('cfgSecretKey').value.trim();
+
+            if (!appId || !apiKey || !secretKey) {
+                configMessage.style.color = '#fca5a5';
+                configMessage.textContent = '请填写三个密钥，缺一不可';
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app_id: appId, api_key: apiKey, secret_key: secretKey })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    configMessage.style.color = '#00e676';
+                    configMessage.textContent = '✅ ' + data.message;
+                    baiduConfigured = true;
+                    updateEngineUI();
+                    setTimeout(() => closeConfigModal(), 1500);
+                } else {
+                    configMessage.style.color = '#fca5a5';
+                    configMessage.textContent = '❌ 保存失败';
+                }
+            } catch (err) {
+                configMessage.style.color = '#fca5a5';
+                configMessage.textContent = '❌ 网络错误: ' + err.message;
+            }
+        }
+
+        async function clearConfig() {
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ app_id: '', api_key: '', secret_key: '' })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    configMessage.style.color = '#00e676';
+                    configMessage.textContent = '✅ ' + data.message;
+                    document.getElementById('cfgAppId').value = '';
+                    document.getElementById('cfgApiKey').value = '';
+                    document.getElementById('cfgSecretKey').value = '';
+                    baiduConfigured = false;
+                    updateEngineUI();
+                    setTimeout(() => closeConfigModal(), 1500);
+                }
+            } catch (err) {
+                configMessage.style.color = '#fca5a5';
+                configMessage.textContent = '❌ 清除失败';
+            }
+        }
+
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') extract();
+        });
+
+        async function extract() {
+            const rawInput = urlInput.value.trim();
+            if (!rawInput) { showError('请输入B站视频链接'); return; }
+
+            setLoading(true);
+            showProgress('正在下载视频音频...', '请耐心等待');
+            resultSection.classList.remove('active');
+
+            try {
+                const response = await fetch('/api/extract', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: rawInput })
+                });
+                const data = await response.json();
+
+                hideProgress();
+
+                if (data.success) {
+                    showResult(data);
+                } else {
+                    showError(data.error || '提取失败', data.title, data.bvid);
+                }
+            } catch (err) {
+                hideProgress();
+                showError('网络错误或服务器未响应: ' + err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function setLoading(loading) {
+            extractBtn.disabled = loading;
+            if (loading) {
+                btnText.classList.remove('active');
+                btnLoading.classList.add('active');
+            } else {
+                btnText.classList.add('active');
+                btnLoading.classList.remove('active');
+            }
+        }
+
+        function showProgress(title, desc) {
+            progressTitle.textContent = title;
+            progressDesc.textContent = desc;
+            progressSection.classList.add('active');
+        }
+
+        function hideProgress() {
+            progressSection.classList.remove('active');
+        }
+
+        function showResult(data) {
+            currentResult = data;
+            const durationMin = data.duration ? Math.round(data.duration / 60 * 10) / 10 : 0;
+            const engineTag = data.engine === 'baidu' ? '百度API' : '本地Whisper';
+            resultSection.innerHTML = `
+                <div class="result-card">
+                    <div class="result-header">
+                        <div class="result-title">${escapeHtml(data.title)}</div>
+                        <div class="result-meta">
+                            <span class="meta-tag">${engineTag}</span>
+                            <span class="meta-tag">${durationMin} 分钟</span>
+                            <span class="meta-tag">${data.word_count} 字</span>
+                        </div>
+                    </div>
+                    <div class="transcript-box" id="transcriptBox">${escapeHtml(data.transcript)}</div>
+                    <div class="action-buttons">
+                        <button class="action-btn" onclick="copyTranscript()">📋 复制文案</button>
+                        <button class="action-btn primary" onclick="downloadTranscript()">💾 下载TXT</button>
+                    </div>
+                </div>
+            `;
+            resultSection.classList.add('active');
+        }
+
+        function showError(message, title, bvid) {
+            let extraInfo = '';
+            if (title) {
+                extraInfo = `<div style="margin-top:8px;font-size:13px;color:rgba(255,255,255,0.5);">视频: ${escapeHtml(title)}${bvid ? ' · ' + bvid : ''}</div>`;
+            }
+            resultSection.innerHTML = `
+                <div class="error-card">
+                    <span style="font-size:20px;flex-shrink:0;">⚠️</span>
+                    <div><div>${escapeHtml(message)}</div>${extraInfo}</div>
+                </div>
+            `;
+            resultSection.classList.add('active');
+        }
+
+        async function copyTranscript() {
+            if (!currentResult) return;
+            try {
+                await navigator.clipboard.writeText(currentResult.transcript);
+                alert('文案已复制到剪贴板！');
+            } catch (err) {
+                const box = document.getElementById('transcriptBox');
+                const range = document.createRange();
+                range.selectNode(box);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+                document.execCommand('copy');
+                window.getSelection().removeAllRanges();
+                alert('文案已复制到剪贴板！');
+            }
+        }
+
+        async function downloadTranscript() {
+            if (!currentResult) return;
+            try {
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: currentResult.title,
+                        bvid: currentResult.bvid,
+                        transcript: currentResult.transcript
+                    })
+                });
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentResult.title.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('下载失败: ' + err.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 页面加载时检查引擎状态
+        checkEngineStatus();
+    </script>
+</body>
+</html>
