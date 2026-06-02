@@ -1,73 +1,75 @@
-# 文案福特 · BiliTranscript
+# BiliTranscript
 
-> 把 B站 视频里**说的话**，用**手机本地 AI** 转成文字 —— 全程离线、不传云端。
+> Turn what is **spoken** in a Bilibili video into text — using **on-device AI**, fully offline, nothing sent to the cloud.
 
-粘贴 B站 链接 → 下载音频 → 本地语音识别 → 一键复制 / 分享 / 导出。支持中 / 英 / 日 / 韩 / 粤，可切换 SenseVoice（快）与 Whisper（准）等多种本地模型。
+Paste a Bilibili link → download the audio → recognize the speech locally → copy / share / export in one tap. Works for Chinese, English, Japanese, Korean and Cantonese, and lets you switch between on-device models such as SenseVoice (fast) and Whisper (accurate).
 
 ![license](https://img.shields.io/badge/license-MIT-blue) ![platform](https://img.shields.io/badge/platform-Android%207.0%2B-green) ![engine](https://img.shields.io/badge/ASR-sherpa--onnx-orange)
 
----
-
-## ✨ 功能特性
-
-- 🎙️ **本地语音识别**：sherpa-onnx 离线引擎，不联网、不上传，隐私安全
-- 🧩 **模型仓库（不塞进 APK）**：模型存手机存储，App 自动检测。可**下载 / 导入压缩包 / 删除 / 切换**，APK 保持精简
-- 🌏 **多语种**：中、英、日、韩、粤；可自动检测或指定
-- 🔗 **多种链接**：BV 号 / AV 号 / `b23.tv` 短链 / 分享文案，自动解析
-- 📲 **分享入口 + 剪贴板**：B站「分享到本应用」直接开提；打开 App 自动识别剪贴板里的链接
-- 🗂️ **历史记录**：每次提取自动入库，可搜索 / 收藏 / 秒开 / 删除
-- 🫧 **悬浮球**：后台提取，通知栏看进度
-- 💾 **导出**：复制、分享、存 TXT；字幕来源可导出带时间轴的 SRT
-- 🎨 **大厂风 UI**：夜间玻璃拟态 + 极光，三页底部导航
-
-## 📸 截图
-
-> 放几张手机截图到 `docs/screenshots/` 并在此引用即可。
+> Note: the app's UI is in Chinese because the target content (Bilibili) is Chinese. This README is in English for international readers.
 
 ---
 
-## 🧱 技术栈
+## ✨ Features
 
-| 组件 | 用途 |
-|------|------|
+- 🎙️ **On-device speech recognition** — powered by the offline [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) engine. No network, no uploads, privacy-friendly.
+- 🧩 **Model store (models are NOT bundled in the APK)** — models live in phone storage and are auto-detected. You can **download / import a zip / delete / switch** models, keeping the APK small.
+- 🌏 **Multilingual** — Chinese, English, Japanese, Korean, Cantonese; auto-detect or force a language.
+- 🔗 **Flexible link parsing** — BV id / AV id / `b23.tv` short links / raw "share text" are all accepted.
+- 📲 **Share sheet + clipboard** — "Share to" the app directly from Bilibili; on launch it auto-detects a Bilibili link in the clipboard.
+- 🗂️ **History** — every extraction is saved automatically; searchable, favoritable, one-tap reopen, deletable.
+- 🫧 **Floating ball** — run extraction in the background with progress in the notification.
+- 💾 **Export** — copy, share, save as TXT; subtitle-sourced results can export timed SRT.
+- 🎨 **Polished UI** — dark glassmorphism with aurora accents and a three-tab bottom navigation.
+
+## 📸 Screenshots
+
+> Drop a few phone screenshots into `docs/screenshots/` and reference them here.
+
+---
+
+## 🧱 Tech Stack
+
+| Component | Purpose |
+|-----------|---------|
 | Kotlin + Jetpack Compose (Material 3) | UI |
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) `1.13.0` | 本地语音识别引擎（JNI + ONNX Runtime） |
-| SenseVoice-Small / Whisper medium·large-v3 | 可切换的识别模型 |
-| OkHttp + kotlinx.serialization | B站 接口与下载 |
-| MediaCodec | 音频解码（m4a → 16kHz PCM） |
-| ViewModel + StateFlow | 单向数据流 |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) `1.13.0` | On-device speech recognition (JNI + ONNX Runtime) |
+| SenseVoice-Small / Whisper medium·large-v3 | Switchable recognition models |
+| OkHttp + kotlinx.serialization | Bilibili API access & downloads |
+| MediaCodec | Audio decoding (m4a → 16 kHz PCM) |
+| ViewModel + StateFlow | Unidirectional data flow |
 
-**架构**：链接解析 → 取流下载 → 解码 →（可选人声分离）→ 识别，统一走共享的 `TranscriptionPipeline`，主界面与悬浮球复用同一条管线。
+**Architecture:** link parsing → stream download → decode → (optional vocal separation) → recognition, all flowing through a single shared `TranscriptionPipeline`. The main screen and the floating-ball service reuse the same pipeline.
 
-## 📂 仓库结构
+## 📂 Repository Structure
 
 ```
 .
-├── android-app/                 # 安卓 App（主项目）
+├── android-app/                 # The Android app (main project)
 │   └── app/src/main/java/com/example/bilitranscript/
-│       ├── MainActivity / *Screen.kt     # Compose 三页 UI（提取/历史/设置）
-│       ├── MainViewModel.kt              # 状态与动作
-│       ├── TranscriptionPipeline.kt      # 共享提取管线
-│       ├── BiliDownloader.kt             # B站 解析与音频下载
-│       ├── SpeechRecognizer.kt           # sherpa-onnx 识别（assets 或手机文件路径）
-│       ├── ModelManager.kt               # 模型仓库：下载/导入/删除/检测
+│       ├── MainActivity / *Screen.kt     # Compose UI, 3 tabs (Extract / History / Settings)
+│       ├── MainViewModel.kt              # State & actions
+│       ├── TranscriptionPipeline.kt      # Shared extraction pipeline
+│       ├── BiliDownloader.kt             # Bilibili parsing & audio download
+│       ├── SpeechRecognizer.kt           # sherpa-onnx recognition (from assets or phone storage)
+│       ├── ModelManager.kt               # Model store: download / import / delete / detect
 │       └── ...
-├── scripts/setup-models.{ps1,sh}# 拉取内置 SenseVoice 模型
-├── (Python 桌面原型：app.py / audio_extractor.py 等)
+├── scripts/setup-models.{ps1,sh}# Fetch the bundled SenseVoice model
+├── docs/python-desktop.md       # The earlier Python/Flask desktop prototype
 └── README.md
 ```
 
 ---
 
-## 🚀 快速开始（安卓）
+## 🚀 Quick Start (Android)
 
-### 1. 环境
-- Android Studio（含 Android SDK，`compileSdk 36`）
+### Prerequisites
+- Android Studio (with the Android SDK, `compileSdk 36`)
 - JDK 21
-- 一台 Android 7.0+ 手机（开 USB 调试）
+- An Android 7.0+ device with USB debugging enabled
 
-### 2. 拉取内置模型（必需）
-内置 SenseVoice 模型 239MB，超 GitHub 单文件上限，**未入库**。clone 后先跑一次：
+### 1. Fetch the bundled model (required)
+The bundled SenseVoice model is ~239 MB, which exceeds GitHub's per-file limit, so it is **not committed**. After cloning, run once:
 
 ```powershell
 # Windows
@@ -77,44 +79,44 @@ powershell -ExecutionPolicy Bypass -File scripts\setup-models.ps1
 # macOS / Linux
 bash scripts/setup-models.sh
 ```
-> 会把模型放到 `android-app/app/src/main/assets/models/`。sherpa-onnx 的 AAR 已随仓库提供，无需另下。
+> This places the model into `android-app/app/src/main/assets/models/`. The sherpa-onnx AAR is already included in the repo, so no extra download is needed for it.
 
-### 3. 编译安装
+### 2. Build & install
 ```bash
 cd android-app
 ./gradlew assembleDebug
-# 安装到已连接的手机
+# install onto a connected device
 ./gradlew installDebug
 ```
-APK 输出在 `android-app/app/build/outputs/apk/debug/app-debug.apk`。
+The APK is produced at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
-## 🧩 模型管理（核心玩法）
+## 🧩 Model Management (the core idea)
 
-模型**不打进 APK**，进 App 后在 **设置 → 模型仓库** 管理。三种获取方式：
+Models are **not packed into the APK**. Manage them in-app under **Settings → Model Store**. Three ways to get a model:
 
-| 方式 | 说明 |
-|------|------|
-| **下载** | App 内直连下载（海外/有代理可用；**国内 HuggingFace 常下不动**） |
-| **导入压缩包**（推荐国内） | 电脑/浏览器先下好模型 `.zip` → 传到手机 → 点「📦 导入压缩包」选它，自动解压装好 |
-| **adb 推送**（开发者） | 见下方命令，推到 App 私有目录 |
+| Method | Notes |
+|--------|-------|
+| **Download** | In-app direct download (fine with good connectivity / a proxy; HuggingFace is often unreachable from mainland China). |
+| **Import a zip** (recommended in China) | Download the model `.zip` on a PC/browser → transfer to the phone → tap **"📦 Import zip"** and pick it; the app unzips and installs it automatically. |
+| **adb push** (developers) | See the command below; pushes into the app's private directory. |
 
-发布时把模型打包成 `.zip`（每个包内直接放 `*.onnx` + `tokens.txt`），作为 **GitHub Release 附件**供下载导入。本仓库的 `scripts` 思路与 `model-packages/`（本地生成、未入库）即为此用途。
+For releases, package each model as a `.zip` (put the raw `*.onnx` + `tokens.txt` directly inside) and attach it as a **GitHub Release asset** for users to download and import.
 
-可选模型（sherpa-onnx 导出，来源 HuggingFace `csukuangfj/...`）：
+Available models (exported by sherpa-onnx, sourced from HuggingFace `csukuangfj/...`):
 
-| 模型 | 大小(int8) | 特点 |
-|------|-----------|------|
-| SenseVoice-Small | ~230MB | 快；中英日韩粤；干净人声好 |
-| Whisper medium | ~950MB | 更抗噪/音乐、多语种稳；较慢 |
-| Whisper large-v3 | ~1.77GB | 最准最抗造；很慢很大 |
+| Model | Size (int8) | Notes |
+|-------|-------------|-------|
+| SenseVoice-Small | ~230 MB | Fast; zh/en/ja/ko/yue; great on clean speech |
+| Whisper medium | ~950 MB | More robust to noise/music, steadier multilingual; slower |
+| Whisper large-v3 | ~1.77 GB | Most accurate and robust; very slow and large |
 
 <details>
-<summary>开发者：adb 推送模型到手机</summary>
+<summary>Developers: push a model to the device via adb</summary>
 
 ```bash
-# 以 whisper-medium 为例，把三个文件推进 App 私有目录（debug 包可用 run-as）
+# Example: whisper-medium — push the three files into the app's private dir (run-as works for debug builds)
 adb push medium-encoder.int8.onnx /data/local/tmp/
 adb push medium-decoder.int8.onnx /data/local/tmp/
 adb push medium-tokens.txt       /data/local/tmp/
@@ -127,20 +129,20 @@ adb shell run-as com.example.bilitranscript cp /data/local/tmp/medium-tokens.txt
 
 ---
 
-## 🖥️ Python 桌面原型
+## 🖥️ Python Desktop Prototype
 
-仓库根目录还保留了一个 Flask 网页版（`app.py` / `audio_extractor.py`）：浏览器粘贴链接，用本地 Whisper 或百度云 API 识别。双击 `start.bat` 启动。详见 [docs/python-desktop.md](docs/python-desktop.md)。仅作早期原型，主力已转向安卓端。
+The repo root also keeps an earlier Flask web version (`app.py` / `audio_extractor.py`): paste a link in the browser and recognize via local Whisper or the Baidu cloud ASR API. See [docs/python-desktop.md](docs/python-desktop.md). It is an early prototype only; development has moved to the Android app.
 
 ## 🗺️ Roadmap
 
-- [ ] 人声分离（去背景音乐）真正接入推理后端
-- [ ] VAD 切句：跳过纯音乐段、给所有引擎生成时间轴 → 支持导出 SRT
-- [ ] LLM 文案润色（加标点 / 分段 / 摘要 / 翻译）
-- [ ] 多平台（抖音 / 快手 / YouTube / 小红书）
+- [ ] Vocal separation (remove background music) wired to a real inference backend
+- [ ] VAD segmentation: skip music-only stretches and produce timestamps for every engine → enable SRT export
+- [ ] LLM post-processing (punctuation / paragraphing / summary / translation)
+- [ ] More platforms (Douyin / Kuaishou / YouTube / Xiaohongshu)
 
-## ⚠️ 免责声明
+## ⚠️ Disclaimer
 
-仅供个人学习与研究使用，请遵守 B站 用户协议与相关法律法规，勿用于侵犯版权或商业用途。识别结果由 AI 生成，可能存在错误。
+For personal study and research only. Please respect Bilibili's Terms of Service and applicable laws; do not use it for copyright infringement or commercial purposes. Recognition results are AI-generated and may contain errors.
 
 ## 📄 License
 
