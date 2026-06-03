@@ -24,7 +24,13 @@ Paste a Bilibili link → download the audio → recognize the speech locally �
 
 ## 📸 Screenshots
 
-> Drop a few phone screenshots into `docs/screenshots/` and reference them here.
+| Extract | Model Store |
+|---------|-------------|
+| ![Extract screen](docs/screenshots/home.png) | ![Model store screen](docs/screenshots/model-store.png) |
+
+| History | Settings |
+|---------|----------|
+| ![History screen](docs/screenshots/history.png) | ![Settings screen](docs/screenshots/settings.png) |
 
 ---
 
