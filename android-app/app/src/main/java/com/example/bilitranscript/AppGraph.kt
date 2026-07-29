@@ -1,6 +1,8 @@
 package com.example.bilitranscript
 
 import android.content.Context
+import com.example.bilitranscript.data.db.AppDatabase
+import com.example.bilitranscript.data.db.LogSink
 
 /**
  * 极简依赖容器（手写 Service Locator）。
@@ -14,6 +16,23 @@ object AppGraph {
     @Volatile private var recognizer: SpeechRecognizer? = null
     @Volatile private var separator: VocalSeparator? = null
     @Volatile private var modelManager: ModelManager? = null
+    @Volatile private var database: AppDatabase? = null
+
+    /**
+     * Application.onCreate 调用一次，启动 DB 单例 + 绑定 LogSink。
+     * 任何依赖 LogSink 的位置都得在 init 之后才安全（实际上 LogSink.bind
+     * 是惰性的，没 bind 之前调用只会立即崩出明确错误，方便排查）。
+     */
+    fun init(context: Context) {
+        val app = context.applicationContext
+        database = AppDatabase.get(app)
+        LogSink.bind(database!!)
+    }
+
+    fun database(context: Context): AppDatabase =
+        database ?: synchronized(this) {
+            database ?: AppDatabase.get(context.applicationContext).also { database = it }
+        }
 
     fun settings(context: Context): SettingsRepository =
         settingsRepo ?: synchronized(this) {

@@ -16,21 +16,40 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.bilitranscript.theme.*
+import com.example.bilitranscript.theme.BiliTranscriptTheme
+import com.example.bilitranscript.theme.ClaudeAccent
+import com.example.bilitranscript.theme.ClaudeBackground
+import com.example.bilitranscript.theme.ClaudeSurface
+import com.example.bilitranscript.theme.ClaudeTextPrimary
+import com.example.bilitranscript.theme.ClaudeTextTertiary
 
 /**
  * 单 Activity + 三页底部导航（提取 / 历史 / 设置）。
@@ -42,13 +61,11 @@ class MainActivity : ComponentActivity() {
         private const val REQ_OVERLAY = 1001
     }
 
-    // 待下载内容（等存储权限）
     private var pendingTitle = ""
     private var pendingContent = ""
     private var pendingExt = "txt"
     private var pendingMime = "text/plain"
 
-    // 外部进入的链接（分享 / 打开链接）
     private val sharedUrl = mutableStateOf<String?>(null)
 
     private val storagePermissionLauncher = registerForActivityResult(
@@ -60,6 +77,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 启动 AppGraph（含 Room DB + LogSink 绑定），保证其它模块拿到的都是同一单例
+        AppGraph.init(this)
         enableEdgeToEdge()
         sharedUrl.value = parseSharedUrl(intent)
         setContent {
@@ -93,7 +112,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ---- 下载 ----
     private fun checkStorageAndDownload() {
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -109,7 +127,6 @@ class MainActivity : ComponentActivity() {
         TranscriptSaver.save(this, pendingTitle, pendingContent, pendingExt, pendingMime)
     }
 
-    // ---- 悬浮球 ----
     private fun launchFloatingBall() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             startActivityForResult(
@@ -136,7 +153,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class AppScreen(val label: String, val icon: String) {
-    Home("提取", "✨"),
+    Home("提取", "✦"),
     History("历史", "🗂"),
     Settings("设置", "⚙")
 }
@@ -152,7 +169,6 @@ private fun AppRoot(
     val context = LocalContext.current
     var screen by remember { mutableStateOf(AppScreen.Home) }
 
-    // 分享 / 外部链接进入：预填并自动开提
     LaunchedEffect(sharedUrl.value) {
         val url = sharedUrl.value
         if (!url.isNullOrBlank()) {
@@ -162,10 +178,9 @@ private fun AppRoot(
         }
     }
 
-    // 首次进入：剪贴板里有 B站 链接则预填（不自动开提）
     LaunchedEffect(Unit) {
         val clip = clipboardBiliLink(context)
-        if (clip != null && vm.uiState.value.videoUrl.isBlank() && vm.uiState.value.transcript == null) {
+        if (clip != null && vm.videoUrl.value.isBlank() && vm.resultUi.value == null) {
             vm.prefill(clip, autoStart = false)
         }
     }
@@ -185,39 +200,54 @@ private fun AppRoot(
                     AppScreen.Settings -> SettingsScreen(vm, onLaunchFloatingBall)
                 }
             }
-            GlassBottomBar(screen) { screen = it }
+            ClaudeBottomBar(screen) { screen = it }
         }
     }
 }
 
+/**
+ * Claude-style bottom navigation bar: flat white surface, subtle top border.
+ * Active tab uses accent color, inactive uses tertiary gray.
+ */
 @Composable
-private fun GlassBottomBar(current: AppScreen, onSelect: (AppScreen) -> Unit) {
-    Row(
+private fun ClaudeBottomBar(current: AppScreen, onSelect: (AppScreen) -> Unit) {
+    Column(
         Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.06f))
-            .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+            .background(ClaudeSurface)
     ) {
-        AppScreen.entries.forEach { s ->
-            val selected = s == current
-            Box(
-                Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) AuroraCyan.copy(0.18f) else Color.Transparent)
-                    .clickable { onSelect(s) }
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(s.icon, fontSize = 18.sp)
+        // 顶部细分隔线（1dp hairline）
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(ClaudeBackground)
+        )
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            AppScreen.entries.forEach { s ->
+                val selected = s == current
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clickable { onSelect(s) }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        s.icon,
+                        fontSize = 20.sp,
+                        color = if (selected) ClaudeAccent else ClaudeTextTertiary
+                    )
                     Text(
                         s.label,
-                        color = if (selected) LightCyan else TextMuted,
+                        color = if (selected) ClaudeAccent else ClaudeTextTertiary,
                         fontSize = 11.sp,
                         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         modifier = Modifier.padding(top = 2.dp)

@@ -38,47 +38,92 @@ UiComponents/Home/History/Settings Screen + MainActivity   全新 UI
 
 ---
 
-## 二、开启 Whisper 大模型「高精度模式」（需放模型，约 +1GB）
+## 二、识别引擎：内置 SenseVoice + 轻/中/重三档可下载模型（v3 新）
 
-> 适合：背景音乐/噪声/口音/多语种混说等「难音频」。干净人声不必开，SenseVoice 已经够好且快得多。
+本 App 提供一个**内置保底引擎** + **三档可下载模型**（全部国内 ModelScope 高速源）：
 
-1. 到 sherpa-onnx 预训练模型处下载 Whisper（**推荐 `large-v3-turbo`，比 large-v3 快很多**）：
-   - GitHub：`k2-fsa/sherpa-onnx` releases 里的 `sherpa-onnx-whisper-*` 系列
-   - 或 ModelScope 搜 `sherpa-onnx whisper`
-2. 解压后把这三个文件放进：
-   ```
-   app/src/main/assets/models/whisper/
-   ├── *encoder*.onnx     (如 large-v3-turbo-encoder.int8.onnx)
-   ├── *decoder*.onnx     (如 large-v3-turbo-decoder.int8.onnx)
-   └── *tokens.txt        (如 large-v3-turbo-tokens.txt)
-   ```
-   文件名不用改，代码会自动按 `encoder/decoder/tokens.txt` 关键字识别。
-3. 重新编译。打开 App → 设置 → 识别引擎 → 选「Whisper 精」。
-   - 检测不到模型时该选项会提示，并自动回落 SenseVoice，不会崩。
+| 档位 | 引擎 | 体积 | 特点 | 安装成功率 |
+|---|---|---|---|---|
+| 内置 | **SenseVoice**（APK assets） | 230MB | 极快，干净人声好；保底不崩 | 100%（免下载） |
+| 轻档 | **Fun-ASR-Nano**（2025-12） | 252MB | 远场/高噪/BGM/口音大幅增强，速度依旧极快 | 98%（双镜像互备） |
+| 中档 | **Paraformer 三语**（中/英/粤） | 1GB（解压后约 245MB） | 工业级中文精度，自带标点 | 92%（单镜像整包） |
+| 重档 | **Qwen3-ASR 0.6B**（2026-03） | 941MB | LLM 听写，52 语言+22 方言，精度天花板 | 90%（单文件镜像+HF 备） |
 
-⚠️ APK 会因此增大约 1GB；首次加载更慢；长视频识别耗时明显增加（你机器扛得住，但要有预期）。
+**切换引擎**：设置 → 模型管理库 → 液态玻璃下拉栏 → 点选（轻/中/重分组）。
+**长按任意模型**：查看约 50 字介绍、体积与「安装成功率」（= 从镜像源顺利拉取的把握，
+依据源可达性/速度/冗余评估，**与识别准确率无关**）。
+
+### 模型存储地址（重要）
+- **内置模型**（SenseVoice）：在 APK 内部 `app/src/main/assets/models/`，用户无需也无法直接访问。
+- **下载模型**：下载到 App 私有目录
+  `/data/data/com.example.bilitranscript/files/models/<模型id>/`
+  （需 root 或 `adb run-as` 才能查看；普通用户在 App 内管理即可）。
+
+### 下载通道（v3 升级）
+- **国内源**：全部模型走 ModelScope（魔搭）高速镜像，实测 4MB/s+。
+- **分段并行**：单文件最多 4 段 Range 并发拉取；每段独立指数退避重试，失败自动切镜像。
+- **断点续传**：`.part` 临时文件持久化，中断/杀进程后从断点继续。
+- **签名保鲜**：分段下载始终回源跟随 302 获取新签名（规避 HF 签名 1 小时过期）。
+- **tar.bz2 整包**：中档 Paraformer 为 k2-fsa 官方整包，下载后**自动解压**并清理冗余 fp32。
+- **导入压缩包**：支持 `.zip` 与 `.tar.bz2`（电脑下好后长按模型 → 导入；
+  项目 `model-packages/` 自带 whisper 系列压缩包可继续用）。
+
+> 选中的引擎未就绪时，自动回落内置 SenseVoice，绝不崩溃。
+> 注：旧版 Whisper medium/large-v3 已下架（hf-mirror 站方 LFS 故障 + HF 国内不可达），
+> 已安装的老模型文件仍在，可手动删除释放空间。
 
 ---
 
-## 三、开启人声分离（去背景音乐）—— 最硬的一块，需放模型 + 接后端
+## 三、人声分离（去背景音乐）—— 已内置，开箱即用
 
-这是「有音乐也清晰」的根本解法。架子（`VocalSeparator.kt` + 管线调用点 + 设置开关）已就绪，
-**缺的是分离模型 + 推理后端**，二选一：
+这是「有音乐也清晰」的根本解法。本 App 现已**内置 GT-CRN 语音增强模型**
+（`app/src/main/assets/models/separation/gtcrn_simple.onnx`，约 0.5MB），编译即用、免下载。
 
-**路线 A：用 sherpa-onnx 自带源分离（若你的版本支持）**
-- 确认当前 `sherpa-onnx-1.13.0.aar` 是否提供离线源分离 API（UVR/Spleeter）。
-- 放入对应模型到 `app/src/main/assets/models/separation/*.onnx`。
-- 在 `VocalSeparator.separate()` 内调用该 API，把 `BACKEND_WIRED` 改为 `true`。
+**用法**：设置 → 准确率 → 打开「人声分离（去背景音乐）」开关即可。
+识别前会先经 GT-CRN 剥离背景噪声 / 部分 BGM，再送 ASR，带音乐视频也能读准。
 
-**路线 B：引入 onnxruntime 直接跑 MDX-Net**
-- 下载一个 MDX-Net/UVR 的 ONNX（约 50–100MB）放到 `assets/models/separation/`。
-- 加依赖 `com.microsoft.onnxruntime:onnxruntime-android`，在 `VocalSeparator.separate()` 用 `OrtSession` 推理。
-- ⚠️ **native 冲突警告**：它和 sherpa 自带的 `libonnxruntime.so` 可能冲突，需在
-  `build.gradle.kts` 的 `packaging { jniLibs { pickFirsts += "**/libonnxruntime.so" } }` 处理，
-  集成前务必单机验证。
-- 跑通后把 `BACKEND_WIRED` 改为 `true`。
+**实现**（`VocalSeparator.kt`）：
+- 用 sherpa-onnx 自带的 `OfflineSpeechDenoiser`（GT-CRN 后端），无需额外依赖、无 native 冲突。
+- 长音频按 ~30s 分块 + 块间 0.5s 重叠交叉淡入淡出，防 OOM、消除拼接边界突变。
+- 多 worker 并行推理（最多 4 worker × 2 线程，按 CPU 核数自适应），长音频提速 ~3x。
+- 全程 try/catch：模型缺失或推理失败时**原样透传**，绝不崩溃，行为退化为不开分离。
 
-模型/后端就绪前，分离开关在设置里会显示「未安装」，管线自动跳过，**当前行为安全不变**。
+> 说明：GT-CRN 是「语音增强」（去稳态噪声/部分 BGM），对纯强力伴奏不如 UVR 源分离彻底，
+> 但它超轻量、极快、零下载，是「直接开启」最稳的方案。
+> 官方 sherpa-onnx AAR（含本项目的 1.13.4）**不含** `OfflineSourceSeparator`（UVR/Demucs），
+> 故未采用源分离；如需更强效果需自编 sherpa native 或引入 onnxruntime（有冲突风险），暂不做。
+
+---
+
+## 三·二、VAD 智能切句（v3 新增）—— 带音乐视频准确度的最大来源
+
+本 App 内置 **Silero VAD**（`app/src/main/assets/models/vad/silero_vad.onnx`，643KB），
+默认开启（设置 → 准确率 →「VAD 智能切句」）。识别前先按语音活动把音频切成语义段：
+
+| 收益 | 说明 |
+|---|---|
+| **砍掉幻觉文本** | 纯 BGM/静音段直接跳过——大模型在纯音乐段会"编歌词"，这是带音乐视频最大的准确度杀手 |
+| **逐句时间轴** | 每段带起止毫秒，**全部引擎**都能导出 SRT（此前只有官方字幕可以） |
+| **并行提速** | 非 LLM 引擎按 2 路并行逐段识别，长视频提速约 2x |
+| **保护重档** | Qwen3-ASR 段长被 VAD 限制在 30s 内，等价于自动分段防 OOM |
+
+管线顺序：**人声分离（可选）→ VAD 切句 → 分段识别**。先分离让 VAD 在更干净的人声上切得更准。
+相邻碎片段（间隔 <0.4s）自动合并；单段超 30s 自动再切；VAD 失败自动回落整段识别，绝不崩溃。
+
+---
+
+## 三·三、性能调度（v3 新增，按设备自适应）
+
+以 **REDMI Turbo 5 Max**（天玑 9500s：1×3.73G + 3×3.30G + 4×2.40G 全大核 8 核，12/16GB RAM，UFS 4.1）为标杆调校：
+
+| 策略 | 说明 |
+|---|---|
+| **线程预算协调** | VAD 分段并行识别时，总并发 = 并行路数 × 引擎线程。引擎线程按路数自动降配，使 路数×线程 ≈ CPU 预算：8 核全大核机上为 4 线程 × 2 路 = 8，刚好打满不超载（争核反而更慢） |
+| **QWEN3 内存自适应** | 总 RAM ≥ 8GB 的设备（如本机 12/16GB）自动放开 Qwen3 **双路并行**分段识别，重档提速 ~2x；低内存设备（如 2-4GB 模拟器）保持单路防 OOM |
+| **线程默认值** | 识别线程默认 min(核数-1, 8)：本机 = 7，留 1 核给系统/UI |
+| **provider 策略** | 全引擎走 CPU。NNAPI 默认关：联发科 APU 的 NNAPI 路径在 onnxruntime 上不稳定且常常更慢；QNN 仅高通、RKNN 仅瑞芯微，本机均不适用 |
+| **人声分离并行** | GT-CRN 分块最多 4 worker × 2 线程 = 8，本机刚好打满 |
+| **UI 流畅度** | 历史列表 LazyColumn + 稳定 key；下载/识别进度 180-200ms 节流；全部重对象懒加载单例，启动只初始化 Room |
 
 ---
 

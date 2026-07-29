@@ -2,6 +2,7 @@ plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+  alias(libs.plugins.ksp)
 }
 
 android {
@@ -11,8 +12,8 @@ android {
         applicationId = "com.example.bilitranscript"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 10
+        versionName = "1.2.5"
     }
 
     buildTypes {
@@ -68,6 +69,9 @@ dependencies {
   // OkHttp for network requests (Bilibili video download)
   implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+  // Apache Commons Compress: tar.bz2 模型整包解压（k2-fsa 官方模型发布格式）
+  implementation("org.apache.commons:commons-compress:1.27.1")
+
   // Kotlinx Serialization for JSON parsing
   implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
@@ -75,4 +79,9 @@ dependencies {
   // Note: Download the AAR from GitHub releases and place in app/libs/
   // https://github.com/k2-fsa/sherpa-onnx/releases
   implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
+
+  // Room (local SQLite database for history / logs / downloads)
+  implementation(libs.androidx.room.runtime)
+  implementation(libs.androidx.room.ktx)
+  ksp(libs.androidx.room.compiler)
 }

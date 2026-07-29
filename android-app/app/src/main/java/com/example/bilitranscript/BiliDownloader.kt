@@ -6,19 +6,13 @@ import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
- * B站视频下载器
+ * B站及多平台视频下载器
  * 流程：解析链接 → 获取视频信息 → 获取音频流 → 下载音频
- *
- * 支持的链接格式：
- * - https://www.bilibili.com/video/BV1n3KXz7ERs
- * - https://b23.tv/DeQ3fY7 (短链接)
- * - https://m.bilibili.com/video/BV1n3KXz7ERs
- * - 【标题】 https://b23.tv/xxxxx (分享文案)
- * - BV1n3KXz7ERs (纯BV号)
- * - av123456789 (AV号)
  */
 class BiliDownloader {
 
@@ -38,10 +32,23 @@ class BiliDownloader {
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * 从各种B站链接中提取BV号
+     * 从各种视频链接中提取平台标识：
+     *  - B站 → BV 号
+     *  - 抖音/小红书/快手 → `dy_/xhs_/ks_` + 编码后的原始链接
      */
     fun extractBvid(url: String): String? {
         val trimmed = url.trim()
+
+        // 检测并匹配多平台链接
+        if (trimmed.contains("douyin.com") || trimmed.contains("v.douyin.com") || trimmed.contains("iesdouyin.com")) {
+            return "dy_" + URLEncoder.encode(trimmed, "UTF-8")
+        }
+        if (trimmed.contains("xiaohongshu.com") || trimmed.contains("xhslink.com")) {
+            return "xhs_" + URLEncoder.encode(trimmed, "UTF-8")
+        }
+        if (trimmed.contains("kuaishou.com") || trimmed.contains("v.kuaishou.com") || trimmed.contains("gifshow.com")) {
+            return "ks_" + URLEncoder.encode(trimmed, "UTF-8")
+        }
 
         // 1. 直接从文本中提取BV号（最可靠）
         val bvRegex = Regex("BV[1-9A-HJ-NP-Za-km-z]{10}")
@@ -140,6 +147,34 @@ class BiliDownloader {
      * 获取视频信息
      */
     fun getVideoInfo(bvid: String): VideoInfo {
+        if (bvid.startsWith("dy_")) {
+            val shareUrl = URLDecoder.decode(bvid.substring(3), "UTF-8")
+            return VideoInfo(
+                bvid = bvid,
+                cid = 0L,
+                title = fetchExternalTitle(shareUrl) ?: "抖音视频",
+                duration = 0
+            )
+        }
+        if (bvid.startsWith("xhs_")) {
+            val shareUrl = URLDecoder.decode(bvid.substring(4), "UTF-8")
+            return VideoInfo(
+                bvid = bvid,
+                cid = 0L,
+                title = fetchExternalTitle(shareUrl) ?: "小红书视频",
+                duration = 0
+            )
+        }
+        if (bvid.startsWith("ks_")) {
+            val shareUrl = URLDecoder.decode(bvid.substring(3), "UTF-8")
+            return VideoInfo(
+                bvid = bvid,
+                cid = 0L,
+                title = fetchExternalTitle(shareUrl) ?: "快手视频",
+                duration = 0
+            )
+        }
+
         // 获取视频基本信息
         val infoUrl = "https://api.bilibili.com/x/web-interface/view?bvid=$bvid"
         val infoRequest = Request.Builder()
@@ -247,6 +282,37 @@ class BiliDownloader {
         lowBitrate: Boolean = true,
         onProgress: ((Long, Long) -> Unit)? = null
     ): Boolean {
+        if (videoInfo.bvid.startsWith("dy_")) {
+            return try {
+                val shareUrl = URLDecoder.decode(videoInfo.bvid.substring(3), "UTF-8")
+                val streamUrl = getDouyinStreamUrl(shareUrl)
+                downloadUrlToFile(streamUrl, outputFile, onProgress = onProgress)
+            } catch (e: Exception) {
+                android.util.Log.e("BiliDownloader", "抖音视频下载失败: ${e.message}", e)
+                false
+            }
+        }
+        if (videoInfo.bvid.startsWith("xhs_")) {
+            return try {
+                val shareUrl = URLDecoder.decode(videoInfo.bvid.substring(4), "UTF-8")
+                val streamUrl = getXiaohongshuStreamUrl(shareUrl)
+                downloadUrlToFile(streamUrl, outputFile, onProgress = onProgress)
+            } catch (e: Exception) {
+                android.util.Log.e("BiliDownloader", "小红书视频下载失败: ${e.message}", e)
+                false
+            }
+        }
+        if (videoInfo.bvid.startsWith("ks_")) {
+            return try {
+                val shareUrl = URLDecoder.decode(videoInfo.bvid.substring(3), "UTF-8")
+                val streamUrl = getKuaishouStreamUrl(shareUrl)
+                downloadUrlToFile(streamUrl, outputFile, onProgress = onProgress)
+            } catch (e: Exception) {
+                android.util.Log.e("BiliDownloader", "快手视频下载失败: ${e.message}", e)
+                false
+            }
+        }
+
         // 获取音频流地址 (fnval=16 返回DASH格式)
         val playUrl = "https://api.bilibili.com/x/player/playurl?bvid=${videoInfo.bvid}&cid=${videoInfo.cid}&fnval=16"
         val playRequest = Request.Builder()
@@ -314,38 +380,249 @@ class BiliDownloader {
                 val backupResponse = client.newCall(backupRequest).execute()
                 android.util.Log.d("BiliDownloader", "Backup URL response: ${backupResponse.code}")
                 if (backupResponse.isSuccessful || backupResponse.code == 206) {
-                    backupResponse.body?.byteStream()?.use { input ->
-                        outputFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    val success = outputFile.exists() && outputFile.length() > 0
-                    android.util.Log.d("BiliDownloader", "Backup download result: $success, size=${outputFile.length()}")
+                    val blen = backupResponse.body?.contentLength() ?: -1
+                    pumpToFile(backupResponse, outputFile, append = false, totalForProgress = blen, alreadyHave = 0, onProgress = onProgress)
+                    resumeUntilComplete(backupUrl, chromeUa, videoInfo.bvid, outputFile, blen, onProgress)
+                    val success = isComplete(outputFile, blen)
+                    android.util.Log.d("BiliDownloader", "Backup download result: $success, size=${outputFile.length()}, expected=$blen")
+                    if (!success) outputFile.delete()
                     return success
                 }
             }
             return false
         }
 
-        // 保存到输出文件（带进度）
-        audioResponse.body?.byteStream()?.use { input ->
-            outputFile.outputStream().use { output ->
+        // 保存到输出文件（带进度 + 断流续传 + 完整性校验）。
+        // CDN 断流时 read 返回 -1 会被误认为正常结束；不校验的话残缺的 m4a
+        // 只能解出前几秒（"长视频只识别出几个字"的经典元凶），必须拦截。
+        pumpToFile(audioResponse, outputFile, append = false, totalForProgress = contentLen, alreadyHave = 0, onProgress = onProgress)
+        resumeUntilComplete(audioUrl, chromeUa, videoInfo.bvid, outputFile, contentLen, onProgress)
+
+        val success = isComplete(outputFile, contentLen)
+        android.util.Log.d("BiliDownloader", "Download result: $success, size=${outputFile.length()}, expected=$contentLen")
+        if (!success) outputFile.delete()
+        return success
+    }
+
+    /** 把响应体写入文件（append=true 为续写），带进度回调。 */
+    private fun pumpToFile(
+        resp: okhttp3.Response,
+        outputFile: File,
+        append: Boolean,
+        totalForProgress: Long,
+        alreadyHave: Long,
+        onProgress: ((Long, Long) -> Unit)?
+    ) {
+        resp.body?.byteStream()?.use { input ->
+            java.io.FileOutputStream(outputFile, append).use { output ->
                 val buffer = ByteArray(8192)
-                var downloaded = 0L
+                var written = 0L
                 var read: Int
                 while (input.read(buffer).also { read = it } != -1) {
                     output.write(buffer, 0, read)
-                    downloaded += read
-                    if (contentLen > 0) {
-                        onProgress?.invoke(downloaded, contentLen)
-                    }
+                    written += read
+                    if (totalForProgress > 0) onProgress?.invoke(alreadyHave + written, totalForProgress)
                 }
             }
         }
+    }
 
-        val success = outputFile.exists() && outputFile.length() > 0
-        android.util.Log.d("BiliDownloader", "Download result: $success, size=${outputFile.length()}")
-        return success
+    /** 文件不完整时按 Range 续传，最多 3 轮。 */
+    private fun resumeUntilComplete(
+        audioUrl: String,
+        chromeUa: String,
+        bvid: String,
+        outputFile: File,
+        contentLen: Long,
+        onProgress: ((Long, Long) -> Unit)?
+    ) {
+        var rounds = 0
+        while (contentLen > 0 && outputFile.length() < contentLen && rounds < 3) {
+            rounds++
+            android.util.Log.w("BiliDownloader", "音频不完整(${outputFile.length()}/$contentLen)，第 $rounds 轮 Range 续传...")
+            try {
+                val resumeReq = Request.Builder()
+                    .url(audioUrl)
+                    .header("User-Agent", chromeUa)
+                    .header("Referer", "https://www.bilibili.com/video/$bvid")
+                    .header("Origin", "https://www.bilibili.com")
+                    .header("Accept", "*/*")
+                    .header("Range", "bytes=${outputFile.length()}-")
+                    .build()
+                val rr = client.newCall(resumeReq).execute()
+                if (!rr.isSuccessful && rr.code != 206) {
+                    android.util.Log.w("BiliDownloader", "续传请求被拒: HTTP ${rr.code}")
+                    return
+                }
+                pumpToFile(rr, outputFile, append = true, totalForProgress = contentLen, alreadyHave = outputFile.length(), onProgress = onProgress)
+            } catch (e: Exception) {
+                android.util.Log.w("BiliDownloader", "续传异常(第${rounds}轮): ${e.message}")
+            }
+        }
+        if (contentLen > 0 && outputFile.length() < contentLen) {
+            android.util.Log.e("BiliDownloader", "续传后仍不完整: ${outputFile.length()}/$contentLen")
+        }
+    }
+
+    /** 完整性判定：文件存在、非空、且达到声明长度（无声明长度时按非空算）。 */
+    private fun isComplete(outputFile: File, contentLen: Long): Boolean =
+        outputFile.exists() && outputFile.length() > 0 && (contentLen <= 0 || outputFile.length() >= contentLen)
+
+    private fun getDouyinStreamUrl(shareUrl: String): String {
+        val realUrl = getFinalRedirectUrl(shareUrl) ?: shareUrl
+        val req = Request.Builder()
+            .url(realUrl)
+            .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val html = resp.body?.string() ?: throw Exception("抖音页面内容为空")
+            // RENDER_DATA 场景：整页 JSON 是 URL 编码的，先解码一份一起搜
+            val decoded = try { URLDecoder.decode(html, "UTF-8") } catch (e: Exception) { "" }
+            val haystacks = listOf(html, decoded)
+            val patterns = listOf(
+                Regex("\"playAddr\"\\s*:\\s*\"([^\"]+)\""),
+                Regex("\"play_addr\"\\s*:\\s*\\{\\s*\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
+                Regex("\"download_addr\"[^}]*\"url_list\"\\s*:\\s*\\[\\s*\"([^\"]+)\""),
+                Regex("property=\"og:video\"\\s*content=\"([^\"]+)\""),
+                Regex("https?://[a-zA-Z0-9.-]+/aweme/v1/play/[^\"\\s]+")
+            )
+            for (hay in haystacks) {
+                for (p in patterns) {
+                    val m = p.find(hay)
+                    if (m != null) {
+                        return m.groupValues[1].ifBlank { m.value }
+                            .replace("\\u002F", "/").replace("\\u0026", "&")
+                    }
+                }
+            }
+            throw Exception("抖音链接解析失败：平台风控升级（页面需验证），请稍后重试，或改用 B站 链接")
+        }
+    }
+
+    private fun getXiaohongshuStreamUrl(shareUrl: String): String {
+        val realUrl = getFinalRedirectUrl(shareUrl) ?: shareUrl
+        val req = Request.Builder()
+            .url(realUrl)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val html = resp.body?.string() ?: throw Exception("小红书页面内容为空")
+            val patterns = listOf(
+                Regex("\"masterUrl\"\\s*:\\s*\"([^\"]+)\""),
+                Regex("property=\"og:video\"\\s*content=\"([^\"]+)\""),
+                Regex("\"url\"\\s*:\\s*\"(https?://[^\"]*?\\.mp4[^\"]*)\""),
+                Regex("\"h264\"[^}]*\"url\"\\s*:\\s*\"([^\"]+)\"")
+            )
+            for (p in patterns) {
+                val m = p.find(html)
+                if (m != null) {
+                    return m.groupValues[1].replace("\\u002F", "/").replace("\\u0026", "&")
+                }
+            }
+            if (html.contains("imageList") || html.contains("\"images\"")) {
+                throw Exception("该小红书笔记为图片贴，非视频贴，没有音轨可提取")
+            }
+            throw Exception("小红书链接解析失败：页面需登录或触发风控，请稍后重试，或改用 B站 链接")
+        }
+    }
+
+    private fun getKuaishouStreamUrl(shareUrl: String): String {
+        val realUrl = getFinalRedirectUrl(shareUrl) ?: shareUrl
+        val req = Request.Builder()
+            .url(realUrl)
+            .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val html = resp.body?.string() ?: throw Exception("快手页面内容为空")
+            val decoded = try { URLDecoder.decode(html, "UTF-8") } catch (e: Exception) { "" }
+            val haystacks = listOf(html, decoded)
+            val patterns = listOf(
+                Regex("\"playUrl\"\\s*:\\s*\"([^\"]+)\""),
+                Regex("\"photoUrl\"\\s*:\\s*\"([^\"]+)\""),
+                Regex("\"mainMvUrls\"\\s*:\\s*\\[\\s*\\{[^}]*\"url\"\\s*:\\s*\"([^\"]+)\""),
+                Regex("property=\"og:video\"\\s*content=\"([^\"]+)\"")
+            )
+            for (hay in haystacks) {
+                for (p in patterns) {
+                    val m = p.find(hay)
+                    if (m != null) {
+                        return m.groupValues[1].replace("\\u002F", "/").replace("\\u0026", "&")
+                    }
+                }
+            }
+            throw Exception("快手链接解析失败：页面需登录或触发风控，请稍后重试，或改用 B站 链接")
+        }
+    }
+
+    /**
+     * 抓取外部平台页面标题（og:title / desc / caption / <title> 多备选）。
+     * 被风控/登录墙拦截时返回 null（调用方回落通用名）。
+     */
+    private fun fetchExternalTitle(shareUrl: String): String? {
+        return try {
+            val realUrl = getFinalRedirectUrl(shareUrl) ?: shareUrl
+            val req = Request.Builder()
+                .url(realUrl)
+                .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
+                .build()
+            client.newCall(req).execute().use { resp ->
+                val html = resp.body?.string() ?: return null
+                val patterns = listOf(
+                    Regex("property=\"og:title\"\\s*content=\"([^\"]+)\""),
+                    Regex("\"desc\"\\s*:\\s*\"([^\"]{1,80})\""),
+                    Regex("\"caption\"\\s*:\\s*\"([^\"]{1,80})\""),
+                    Regex("<title>([^<]{1,80})</title>")
+                )
+                patterns.firstNotNullOfOrNull { p -> p.find(html)?.groupValues?.get(1) }
+                    ?.replace("\\u002F", "/")
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() && !it.contains("验证") && !it.contains("登录") }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getFinalRedirectUrl(shortUrl: String): String? {
+        val urlPattern = Regex("https?://[a-zA-Z0-9./_?=&%-]+")
+        val match = urlPattern.find(shortUrl) ?: return null
+        val actualUrl = match.value
+        return try {
+            val req = Request.Builder()
+                .url(actualUrl)
+                .head()
+                .header("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1")
+                .build()
+            redirectClient.newCall(req).execute().use { resp ->
+                val loc = resp.header("Location")
+                if (!loc.isNullOrBlank()) {
+                    if (loc.startsWith("http")) loc else "https:$loc"
+                } else {
+                    resp.request.url.toString()
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun downloadUrlToFile(url: String, outputFile: File, onProgress: ((Long, Long) -> Unit)? = null): Boolean {
+        val chromeUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", chromeUa)
+            .header("Accept", "*/*")
+            .build()
+        val response = client.newCall(req).execute()
+        if (!response.isSuccessful) return false
+        val contentLen = response.body?.contentLength() ?: -1
+        pumpToFile(response, outputFile, append = false, totalForProgress = contentLen, alreadyHave = 0, onProgress = onProgress)
+        val ok = isComplete(outputFile, contentLen)
+        if (!ok) {
+            android.util.Log.e("BiliDownloader", "站外音频下载不完整: ${outputFile.length()}/$contentLen")
+            outputFile.delete()
+        }
+        return ok
     }
 }
 

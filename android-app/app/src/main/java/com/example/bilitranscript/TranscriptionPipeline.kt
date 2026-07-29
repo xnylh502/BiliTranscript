@@ -3,6 +3,8 @@ package com.example.bilitranscript
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -31,13 +33,13 @@ class TranscriptionPipeline(
 
             onProgress(0.05f, "解析链接")
             val bvid = downloader.extractBvid(rawUrl)
-                ?: throw Exception("无法从链接中识别 BV 号，请检查链接格式")
+                ?: throw Exception("无法从链接中识别媒体 ID，请检查链接格式")
 
             onProgress(0.12f, "获取视频信息")
             val videoInfo = downloader.getVideoInfo(bvid)
 
             // ---- 字幕优先：有官方/AI字幕直接秒出，100% 准确 ----
-            if (settings.subtitleFirst) {
+            if (settings.subtitleFirst && !bvid.startsWith("dy_") && !bvid.startsWith("xhs_") && !bvid.startsWith("ks_")) {
                 onProgress(0.25f, "查找官方字幕")
                 val sub = downloader.fetchSubtitle(videoInfo, settings.sessdata)
                 if (sub != null && sub.text.isNotBlank()) {
@@ -55,7 +57,7 @@ class TranscriptionPipeline(
             }
 
             // ---- 降级：语音识别 ----
-            val audioFile = File(context.cacheDir, "bili_audio_${videoInfo.bvid}.m4a")
+            val audioFile = File(context.cacheDir, "media_audio_${videoInfo.bvid.hashCode()}.m4a")
             try {
                 onProgress(0.20f, "下载音频")
                 val ok = downloader.downloadAudio(videoInfo, audioFile, settings.lowBitrateAudio) { done, total ->
@@ -64,18 +66,18 @@ class TranscriptionPipeline(
                         onProgress(p.coerceIn(0.20f, 0.60f), "下载音频 ${(p * 100).toInt()}%")
                     }
                 }
-                if (!ok) throw Exception("音频下载失败")
+                if (!ok) throw Exception("视频音频流下载失败")
 
                 onProgress(0.62f, "解码音频")
                 var samples = audioDecoder.decodeToPcm(audioFile) { p ->
                     onProgress(0.62f + p * 0.16f, "解码音频 ${(p * 100).toInt()}%")
-                } ?: throw Exception("音频解码失败，格式可能不支持")
+                } ?: throw Exception("音轨解码失败，格式可能不支持")
 
-                // ---- 可选人声分离（剥离 BGM）----
+                // ---- 可选人声分离（GT-CRN 剥离 BGM / 背景噪声）----
                 if (settings.vocalSeparation && separator.isAvailable()) {
                     onProgress(0.80f, "分离人声")
                     samples = separator.separate(samples) { p ->
-                        onProgress(0.80f + p * 0.05f, "分离人声 ${(p * 100).toInt()}%")
+                        onProgress(0.80f + p * 0.06f, "分离人声 ${(p * 100).toInt()}%")
                     }
                 }
 
@@ -85,8 +87,23 @@ class TranscriptionPipeline(
                 }
 
                 onProgress(0.88f, "AI 识别中")
-                val text = recognizer.recognizePcm(samples) { p ->
-                    onProgress(0.88f + p * 0.12f, "AI 识别中 ${(p * 100).toInt()}%")
+                
+                // 开启后台进度平滑递增协程，解决大模型本地阻塞或云端请求时的卡顿问题
+                var currentProgress = 0.88f
+                val progressJob = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+                    while (isActive) {
+                        kotlinx.coroutines.delay(180)
+                        // 使用对数逼近，增幅越来越小，逼近 0.98f
+                        val next = currentProgress + (0.98f - currentProgress) * 0.06f
+                        currentProgress = next.coerceIn(0.88f, 0.98f)
+                        onProgress(currentProgress, "AI 识别中 ${(currentProgress * 100).toInt()}%")
+                    }
+                }
+
+                val recognition = try {
+                    recognizer.recognizePcm(samples)
+                } finally {
+                    progressJob.cancel()
                 }
 
                 onProgress(1f, "完成")
@@ -94,8 +111,8 @@ class TranscriptionPipeline(
                     title = videoInfo.title,
                     bvid = videoInfo.bvid,
                     durationSec = videoInfo.duration,
-                    text = text,
-                    segments = emptyList(),
+                    text = recognition.text,
+                    segments = recognition.segments,
                     source = recognizer.currentSource(),
                     usedVocalSeparation = settings.vocalSeparation && separator.isAvailable()
                 )

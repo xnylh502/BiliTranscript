@@ -56,7 +56,7 @@
         android:textSize="14sp"
         android:textColor="#E8F4F8"
         android:textColorHint="#60E8F4F8"
-        android:hint="https://www.bilibili.com/video/BV..."
+        android:hint="粘贴分享链接（B站/抖音/快手/小红书）"
         android:background="@drawable/glass_input_bg"
         android:inputType="textMultiLine" />
 

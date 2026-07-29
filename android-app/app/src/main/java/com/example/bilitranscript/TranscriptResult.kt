@@ -4,7 +4,9 @@ package com.example.bilitranscript
 enum class TranscriptSource(val label: String) {
     SUBTITLE("官方字幕"),
     SENSEVOICE("SenseVoice"),
-    WHISPER("Whisper")
+    WHISPER("Whisper"),
+    PARAFORMER("Paraformer"),
+    QWEN3("Qwen3-ASR")
 }
 
 /** 带时间轴的一句（用于导出 SRT）。毫秒。 */
@@ -33,3 +35,12 @@ data class TranscriptOutcome(
 
 /** 管线进度回调：fraction 0..1，phase 是中文阶段名 */
 typealias ProgressCallback = (fraction: Float, phase: String) -> Unit
+
+/**
+ * 识别器级输出：文本 + 可选逐句时间轴。
+ * VAD 切句识别时 segments 非空（每段带起止毫秒）；整段识别/云端为空。
+ */
+data class SpeechRecognition(
+    val text: String,
+    val segments: List<TranscriptSegment> = emptyList()
+)

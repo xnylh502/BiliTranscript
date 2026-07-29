@@ -1,6 +1,6 @@
-# BiliTranscript
+# 文案绫波
 
-> Turn what is **spoken** in a Bilibili video into text — using **on-device AI**, fully offline, nothing sent to the cloud.
+> 原名 BiliTranscript。Turn what is **spoken** in a Bilibili video into text — using **on-device AI**, fully offline, nothing sent to the cloud.
 
 Paste a Bilibili link → download the audio → recognize the speech locally → copy / share / export in one tap. Works for Chinese, English, Japanese, Korean and Cantonese, and lets you switch between on-device models such as SenseVoice (fast) and Whisper (accurate).
 
@@ -39,9 +39,10 @@ Paste a Bilibili link → download the audio → recognize the speech locally �
 | Component | Purpose |
 |-----------|---------|
 | Kotlin + Jetpack Compose (Material 3) | UI |
-| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) `1.13.0` | On-device speech recognition (JNI + ONNX Runtime) |
-| SenseVoice-Small / Whisper medium·large-v3 | Switchable recognition models |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) `1.13.4` | On-device speech recognition (JNI + ONNX Runtime) |
+| SenseVoice / Fun-ASR-Nano / Paraformer / Qwen3-ASR | Switchable recognition models (built-in + light/mid/heavy tiers) |
 | OkHttp + kotlinx.serialization | Bilibili API access & downloads |
+| Apache Commons Compress | tar.bz2 model bundle extraction |
 | MediaCodec | Audio decoding (m4a → 16 kHz PCM) |
 | ViewModel + StateFlow | Unidirectional data flow |
 
@@ -100,36 +101,35 @@ The APK is produced at `android-app/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## 🧩 Model Management (the core idea)
 
-Models are **not packed into the APK**. Manage them in-app under **Settings → Model Store**. Three ways to get a model:
+Only the lightweight **SenseVoice** is packed into the APK (as a no-crash fallback). All other models are managed in-app under **Settings → Model Store** (a liquid-glass dropdown, grouped by light / mid / heavy tiers; **long-press any model** for its ~50-char intro, size, and **install success rate** — an estimate of how easily the model can be pulled from its mirrors, unrelated to recognition accuracy). Three ways to get a model:
 
 | Method | Notes |
 |--------|-------|
-| **Download** | In-app direct download (fine with good connectivity / a proxy; HuggingFace is often unreachable from mainland China). |
-| **Import a zip** (recommended in China) | Download the model `.zip` on a PC/browser → transfer to the phone → tap **"📦 Import zip"** and pick it; the app unzips and installs it automatically. |
+| **Download** (recommended) | All models are served from **ModelScope** mirrors (fast in mainland China), with 4-way parallel range chunks, per-chunk retry, mirror failover and resumable `.part` files. |
+| **Import an archive** | Download the model `.zip` / `.tar.bz2` on a PC/browser → transfer to the phone → long-press the model → **"Import archive"**; the app extracts and installs it automatically (k2-fsa official `tar.bz2` bundles are extracted and stripped of redundant fp32 weights). |
 | **adb push** (developers) | See the command below; pushes into the app's private directory. |
 
-For releases, package each model as a `.zip` (put the raw `*.onnx` + `tokens.txt` directly inside) and attach it as a **GitHub Release asset** for users to download and import.
+Available models (sherpa-onnx format, mirrors verified reachable from mainland China):
 
-Available models (exported by sherpa-onnx, sourced from HuggingFace `csukuangfj/...`):
+| Tier | Model | Size | Notes |
+|------|-------|------|-------|
+| bundled | SenseVoice-Small | ~230 MB | Fast; zh/en/ja/ko/yue; great on clean speech; built-in fallback |
+| light | Fun-ASR-Nano (2025-12) | ~252 MB | New-gen SenseVoice-arch: far-field / noisy / accent-robust; still very fast |
+| mid | Paraformer trilingual (zh/en/yue) | ~1 GB bundle (≈245 MB installed) | Industrial-grade zh accuracy with punctuation; auto-extracted after download |
+| heavy | Qwen3-ASR 0.6B (2026-03) | ~941 MB | LLM-based transcription; 52 languages + 22 Chinese dialects; most accurate, slowest |
 
-| Model | Size (int8) | Notes |
-|-------|-------------|-------|
-| SenseVoice-Small | ~230 MB | Fast; zh/en/ja/ko/yue; great on clean speech |
-| Whisper medium | ~950 MB | More robust to noise/music, steadier multilingual; slower |
-| Whisper large-v3 | ~1.77 GB | Most accurate and robust; very slow and large |
+> The former Whisper medium / large-v3 entries were removed: hf-mirror's LFS is broken server-side (302 → cas-bridge 404) and huggingface.co is unreachable from mainland China. The new tiers beat them on both accuracy and availability.
 
 <details>
 <summary>Developers: push a model to the device via adb</summary>
 
 ```bash
-# Example: whisper-medium — push the three files into the app's private dir (run-as works for debug builds)
-adb push medium-encoder.int8.onnx /data/local/tmp/
-adb push medium-decoder.int8.onnx /data/local/tmp/
-adb push medium-tokens.txt       /data/local/tmp/
-adb shell run-as com.example.bilitranscript mkdir -p files/models/whisper-medium
-adb shell run-as com.example.bilitranscript cp /data/local/tmp/medium-encoder.int8.onnx files/models/whisper-medium/
-adb shell run-as com.example.bilitranscript cp /data/local/tmp/medium-decoder.int8.onnx files/models/whisper-medium/
-adb shell run-as com.example.bilitranscript cp /data/local/tmp/medium-tokens.txt       files/models/whisper-medium/
+# Example: funasr-nano — push the two files into the app's private dir (run-as works for debug builds)
+adb push model.int8.onnx /data/local/tmp/
+adb push tokens.txt      /data/local/tmp/
+adb shell run-as com.example.bilitranscript mkdir -p files/models/funasr-nano
+adb shell run-as com.example.bilitranscript cp /data/local/tmp/model.int8.onnx files/models/funasr-nano/
+adb shell run-as com.example.bilitranscript cp /data/local/tmp/tokens.txt      files/models/funasr-nano/
 ```
 </details>
 
